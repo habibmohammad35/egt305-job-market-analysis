@@ -175,3 +175,66 @@ def plot_numeric_distribution(df):
 
     plt.tight_layout()
     plt.show()
+
+def plot_bar(df, x_col, y_col, title=None):
+    """
+    Simple bar plot for categorical vs numeric data.
+    
+    Args:
+        df (pd.DataFrame): DataFrame containing the data
+        x_col (str): Column name for categorical variable (x-axis)
+        y_col (str): Column name for numeric variable (y-axis)
+        title (str, optional): Title of the plot
+    """
+    plt.figure(figsize=(10, 6))
+    ax = sns.barplot(data=df, x=x_col, y=y_col, palette="husl")
+    
+    # Add labels on top of bars
+    for p in ax.patches:
+        ax.annotate(f"{p.get_height():.0f}",
+                    (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='bottom',
+                    fontsize=9, color='black', xytext=(0, 3),
+                    textcoords='offset points')
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.01)  # Add some space above the tallest bar
+
+    
+    # Labels and title
+    plt.title(title or f"{y_col} by {x_col}", fontsize=14, fontweight='bold', color='#011547')
+    plt.xlabel(x_col, fontsize=12, fontweight='bold', color='#011547')
+    plt.ylabel(y_col, fontsize=12, fontweight='bold', color='#011547')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+
+def plot_clustered_bars(df, x_col, y_cols, title=None):
+    """
+    Plot a clustered bar chart for multiple numeric columns grouped by a categorical column.
+    
+    Args:
+        df (pd.DataFrame): DataFrame containing the data.
+        x_col (str): Categorical column for x-axis.
+        y_cols (list): List of numeric column names to plot side by side.
+        title (str, optional): Title of the plot.
+    """
+    # Reshape the dataframe into long format for seaborn
+    df_long = df.melt(id_vars=[x_col], value_vars=y_cols, var_name='Metric', value_name='Value')
+    
+    plt.figure(figsize=(12, 6))
+    ax = sns.barplot(data=df_long, x=x_col, y='Value', hue='Metric', palette="husl")
+    
+    # Add value labels on each bar
+    for p in ax.patches:
+        ax.annotate(f"{p.get_height():.0f}",
+                    (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='bottom', fontsize=9, color='black',
+                    xytext=(0, 3), textcoords='offset points')
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.02)  # Add some space above the tallest bar
+    
+    plt.title(title or f"{', '.join(y_cols)} by {x_col}", fontsize=14, fontweight='bold', color='#011547')
+    plt.xlabel(x_col, fontsize=12, fontweight='bold', color='#011547')
+    plt.ylabel("Value (k)", fontsize=12, fontweight='bold', color='#011547')
+    plt.xticks(rotation=45, ha='right')
+    plt.legend(title="Metric", fontsize=10, title_fontsize=11)
+    plt.tight_layout()
+    plt.show()
