@@ -1,3 +1,4 @@
+# Placeholder for the pyspark code snippet
 import pandas as pd
 from pyspark.sql import Column
 from pyspark.sql import DataFrame as SparkDataFrame

@@ -1,17 +1,13 @@
-# All functions in this file are for VIZ purposes in EDA.ipynb.
-
-#Imports
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle # to prevent warnings
 import seaborn as sns
-import logging
-import pandas as pd
-from matplotlib.patches import Rectangle
-from typing import List, Optional
 import numpy as np
-from sklearn.metrics import confusion_matrix
+import pandas as pd
+import logging
+from typing import List, Optional, Union
+from sklearn.metrics import confusion_matrix # type: ignore
 import os
 
-# Functions
 def set_plot_style() -> None:
     """
     Set the plot style for consistent visualizations.
@@ -22,8 +18,8 @@ def set_plot_style() -> None:
         None
     """
     plot_style_dict = {
-        'font.family': ['DejaVu Sans', 'sans-serif'],
-        'font.sans-serif': ['DejaVu Sans', 'sans-serif'],
+        'font.family': ['Arial', 'sans-serif'],
+        'font.sans-serif': ['Arial', 'sans-serif'],
         'axes.facecolor': '#f2f0e8',
         'axes.edgecolor': 'black',
         'axes.labelcolor': '#011547',
@@ -41,97 +37,32 @@ def set_plot_style() -> None:
     plt.rcParams.update(plot_style_dict)
     logging.info("Custom plot style set.")
 
-def plot_categoricals(df, cols):
+import matplotlib.pyplot as plt
+
+
+def plot_target_distribution(df, target):
     """
-    Plots count plots for specified categorical columns with counts annotated.
-    
-    Parameters:
-        df (pd.DataFrame): The dataframe containing the data.
-        cols (list): List of categorical column names to plot.
+    Plot a vertical bar chart of target value counts with labels on top and padding.
     """
-    for col in cols:
-        if col in df.columns:
-            plt.figure(figsize=(10, 5))
-            ax = sns.countplot(
-                data=df,
-                x=col,
-                order=df[col].value_counts().index,
-                palette='viridis'
-            )
+    counts = df[target].value_counts(dropna=False)
+    ax = counts.plot(kind="bar", figsize=(6, 4))
 
-            # Add counts above each bar with extra padding
-            for p in ax.patches:
-                ax.annotate(
-                    f'{int(p.get_height()):,}',
-                    (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center',
-                    va='bottom',
-                    fontsize=10,
-                    xytext=(0, 8),  # increased offset for padding
-                    textcoords='offset points'
-                )
+    # Add labels on top of bars
+    for i, v in enumerate(counts.values):
+        ax.text(i, v + (v * 0.01), str(v), ha='center', va='bottom', fontsize=10)
 
-            # Add extra space above tallest bar
-            ax.set_ylim(0, ax.get_ylim()[1] * 1.10)
+    ax.set_title(f"Distribution of {target}")
+    ax.set_xlabel(target)
+    ax.set_ylabel("Count")
+    ax.set_xticklabels(counts.index.astype(str), rotation=0)
 
-            plt.title(f"Count plot for {col}", fontsize=14)
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
-            plt.show()
-        else:
-            print(f"Column '{col}' not found in dataframe.")
+    # Add padding to top
+    ax.set_ylim(top=counts.max() * 1.1)
 
-def plot_numeric_whisker(df, col):
-    """
-    Plots a box (whisker) plot for a specified numeric column
-    with dotted lines and labels at whiskers and quartiles.
-    """
-    if col not in df.columns:
-        print(f"Column '{col}' not found in DataFrame.")
-        return
-    
-    if not pd.api.types.is_numeric_dtype(df[col]):
-        print(f"Column '{col}' is not numeric.")
-        return
-
-    set_plot_style()
-
-    # Compute quartiles & whiskers
-    q1 = df[col].quantile(0.25)
-    q3 = df[col].quantile(0.75)
-    median = df[col].median()
-    iqr = q3 - q1
-    lower_whisker = max(df[col].min(), q1 - 1.5 * iqr)
-    upper_whisker = min(df[col].max(), q3 + 1.5 * iqr)
-
-    # Plot
-    plt.figure(figsize=(12, 5))
-    ax = sns.boxplot(
-        x=df[col],
-        color="#69b3a2",
-        width=0.4,
-        fliersize=4,
-        linewidth=1.5
-    )
-    
-    # Add dotted reference lines + labels
-    for val, label in [
-        (lower_whisker, "Lower whisker"),
-        (q1, "Q1"),
-        (median, "Median"),
-        (q3, "Q3"),
-        (upper_whisker, "Upper whisker")
-    ]:
-        ax.axvline(val, color='black', linestyle='--', alpha=0.6, linewidth=1)
-        ax.text(val, 0.05, f"{val:.2f}", transform=ax.get_xaxis_transform(),
-                ha='center', va='bottom', fontsize=9, color='black', fontweight='bold')
-
-    plt.title(f"Whisker Plot for {col}", fontsize=14, fontweight='bold', color='#011547', pad=15)
-    plt.xlabel(col, fontsize=12, fontweight='bold', color='#011547')
     plt.tight_layout()
     plt.show()
 
-def plot_numeric_distribution(df):
+def plot_numeric_distribution(df: pd.DataFrame) -> None:
     """
     Plot the distribution of all numeric columns in the DataFrame.
     
@@ -178,70 +109,73 @@ def plot_numeric_distribution(df):
     plt.tight_layout()
     plt.show()
 
-def plot_bar(df, x_col, y_col, title=None):
+def plot_categorical_distributions(
+    df: pd.DataFrame,
+    columns: List[str],
+    hue: Optional[str] = None,
+    max_cols: int = 2,
+    figsize: tuple = (14, 6),
+):
     """
-    Simple bar plot for categorical vs numeric data.
-    
-    Args:
-        df (pd.DataFrame): DataFrame containing the data
-        x_col (str): Column name for categorical variable (x-axis)
-        y_col (str): Column name for numeric variable (y-axis)
-        title (str, optional): Title of the plot
-    """
-    plt.figure(figsize=(10, 6))
-    ax = sns.barplot(data=df, x=x_col, y=y_col, palette="husl")
-    
-    # Add labels on top of bars
-    for p in ax.patches:
-        ax.annotate(f"{p.get_height():.0f}",
-                    (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='bottom',
-                    fontsize=9, color='black', xytext=(0, 3),
-                    textcoords='offset points')
-        ax.set_ylim(0, ax.get_ylim()[1] * 1.01)  # Add some space above the tallest bar
+    Plot count distributions of multiple categorical or discrete columns using subplots.
 
-    
-    # Labels and title
-    plt.title(title or f"{y_col} by {x_col}", fontsize=14, fontweight='bold', color='#011547')
-    plt.xlabel(x_col, fontsize=12, fontweight='bold', color='#011547')
-    plt.ylabel(y_col, fontsize=12, fontweight='bold', color='#011547')
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    plt.show()
-
-def plot_clustered_bars(df, x_col, y_cols, title=None):
-    """
-    Plot a clustered bar chart for multiple numeric columns grouped by a categorical column.
-    
     Args:
         df (pd.DataFrame): DataFrame containing the data.
-        x_col (str): Categorical column for x-axis.
-        y_cols (list): List of numeric column names to plot side by side.
-        title (str, optional): Title of the plot.
+        columns (List[str]): List of categorical column names to plot.
+        hue (Optional[str]): Column to compare categories against (e.g., target variable).
+        max_cols (int): Max columns per row in subplot grid.
+        figsize (tuple): Size of each subplot figure.
+
+    Returns:
+        None (plots displayed)
     """
-    # Reshape the dataframe into long format for seaborn
-    df_long = df.melt(id_vars=[x_col], value_vars=y_cols, var_name='Metric', value_name='Value')
-    
-    plt.figure(figsize=(12, 6))
-    ax = sns.barplot(data=df_long, x=x_col, y='Value', hue='Metric', palette="husl")
-    
-    # Add value labels on each bar
-    for p in ax.patches:
-        ax.annotate(f"{p.get_height():.0f}",
-                    (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='bottom', fontsize=9, color='black',
-                    xytext=(0, 3), textcoords='offset points')
-        ax.set_ylim(0, ax.get_ylim()[1] * 1.02)  # Add some space above the tallest bar
-    
-    plt.title(title or f"{', '.join(y_cols)} by {x_col}", fontsize=14, fontweight='bold', color='#011547')
-    plt.xlabel(x_col, fontsize=12, fontweight='bold', color='#011547')
-    plt.ylabel("Value (k)", fontsize=12, fontweight='bold', color='#011547')
-    plt.xticks(rotation=45, ha='right')
-    plt.legend(title="Metric", fontsize=10, title_fontsize=11)
+    num_cols = len(columns)
+    ncols = min(num_cols, max_cols)
+    nrows = (num_cols + ncols - 1) // ncols
+
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(figsize[0], figsize[1] * nrows))
+    axes = axes.flatten() if num_cols > 1 else [axes]
+
+    for idx, column in enumerate(columns):
+        ax = axes[idx]
+        # Ensure column is string-type for consistency
+        df[column] = df[column].astype(str)
+
+        # Sorted for consistency
+        ordered_vals = sorted(df[column].dropna().unique())
+
+        sns.countplot(data=df, x=column, order=ordered_vals, hue=hue, palette="husl", ax=ax)
+
+        # Annotate bar labels
+        for p in ax.patches:
+            if isinstance(p, Rectangle):
+                height = int(p.get_height())
+                ax.annotate(
+                    f"{height}",
+                    (p.get_x() + p.get_width() / 2.0, p.get_height()),
+                    ha="center",
+                    va="bottom",
+                    fontsize=8
+                )
+
+        ax.set_title(f"Distribution of '{column}'", fontsize=12)
+        ax.set_xlabel(column.replace("_", " ").title())
+        ax.set_ylabel("Count")
+        ax.tick_params(axis="x", rotation=45)
+
+        if hue is not None:
+            ax.legend(title=hue, loc='best')
+        else:
+            ax.get_legend().remove()
+
+    # Hide any unused subplots
+    for j in range(idx + 1, len(axes)): # type: ignore
+        fig.delaxes(axes[j])
+
     plt.tight_layout()
     plt.show()
 
-# Reused previous function for classification evaluation
+# One function to display metrics and plot all relevent graphs and save to docs folder
 def plot_classification_evaluation(
     metrics: dict,
     predictions_df: pd.DataFrame,

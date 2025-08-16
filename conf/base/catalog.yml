@@ -2,8 +2,7 @@ employee_dataset:
   type: pandas.CSVDataset
   filepath: data/01_raw/Employee_dataset.csv
   load_args:
-    dtype_backend: numpy_nullable # Prevent Silent Dtype changes
-
+    dtype_backend: numpy_nullable
 employee_salaries:
   type: pandas.CSVDataset
   filepath: data/01_raw/Employee_salaries.csv
