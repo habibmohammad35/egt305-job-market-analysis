@@ -1,8 +1,6 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from .nodes import (
-    
-)
+from .nodes import ()
 
 
 def create_pipeline(**kwargs) -> Pipeline:

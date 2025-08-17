@@ -1,8 +1,19 @@
-# You can define spark specific configuration here.
+# Memory configs
+spark.driver.memory: 4g              # give driver more heap
+spark.executor.memory: 4g            # give executors more heap
+spark.executor.cores: 2              # parallelism per executor
 
-spark.driver.maxResultSize: 3g
-spark.hadoop.fs.s3a.impl: org.apache.hadoop.fs.s3a.S3AFileSystem
-spark.sql.execution.arrow.pyspark.enabled: true
+# Parquet/ORC tuning
+spark.sql.parquet.compression.codec: snappy   # default, but explicit
+spark.sql.parquet.writer.maxRowGroupSize: 134217728  # 128 MB row groups (instead of 1 GB)
+spark.sql.parquet.enableVectorizedReader: true       # faster scans
 
-# https://docs.kedro.org/en/stable/integrations/pyspark_integration.html#tips-for-maximising-concurrency-using-threadrunner
-spark.scheduler.mode: FAIR
+# Shuffle tuning (helps joins/aggregations)
+spark.sql.shuffle.partitions: 200    # default is 200, tune up/down depending cluster size
+spark.memory.fraction: 0.6           # fraction of heap for execution/storage
+spark.memory.storageFraction: 0.3    # fraction of above for cached data
+
+# Safer spills
+spark.shuffle.spill.compress: true
+spark.shuffle.compress: true
+spark.io.compression.codec: lz4

@@ -1,93 +1,106 @@
-# Placeholder for the pyspark code snippet
-import pandas as pd
-from pyspark.sql import Column
-from pyspark.sql import DataFrame as SparkDataFrame
-from pyspark.sql.functions import regexp_replace
-from pyspark.sql.types import DoubleType
+import logging
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
+from pyspark.sql import types as T
 
+logger = logging.getLogger(__name__)
 
-def _is_true(x: Column) -> Column:
-    return x == "t"
+def _rename_columns(df: DataFrame, mapping: dict) -> DataFrame:
+    for old, new in mapping.items():
+        if old in df.columns and old != new:
+            df = df.withColumnRenamed(old, new)
+    return df
 
+def _extract_digits_long(colname: str):
+    """Extract numeric part of an ID string (JOBxxxx, COMPxxxx, etc.) as LongType."""
+    return F.regexp_extract(F.col(colname).cast("string"), r"(\d+)", 1).cast(T.LongType())
 
-def _parse_percentage(x: Column) -> Column:
-    x = regexp_replace(x, "%", "")
-    x = x.cast("float") / 100
-    return x
+def clean_and_merge_employee_salary_spark(
+    df_employee: DataFrame, df_salary: DataFrame
+) -> DataFrame:
 
+    # --------------------- EMPLOYEE CLEANING ---------------------
+    e = df_employee
+    e = _rename_columns(
+        e,
+        {
+            "jobId": "job_id",
+            "companyId": "company_id",
+            "jobRole": "job_role",
+            "education": "education",
+            "major": "major",
+            "Industry": "industry",
+            "yearsExperience": "years_experience",
+            "distanceFromCBD": "distance_from_cbd",
+        },
+    )
 
-def _parse_money(x: Column) -> Column:
-    x = regexp_replace(x, "[$£€]", "")
-    x = regexp_replace(x, ",", "")
-    x = x.cast(DoubleType())
-    return x
+    if "company_id" in e.columns:
+        e = e.withColumn("company_id", _extract_digits_long("company_id"))
 
+    if "job_id" in e.columns:
+        e = e.withColumn("job_id", _extract_digits_long("job_id"))
 
-def preprocess_companies(companies: SparkDataFrame) -> tuple[SparkDataFrame, dict]:
-    """Preprocesses the data for companies.
+    for c in ["years_experience", "distance_from_cbd"]:
+        if c in e.columns:
+            e = e.withColumn(c, F.col(c).cast(T.DoubleType()))
 
-    Args:
-        companies: Raw data.
-    Returns:
-        Preprocessed data, with `company_rating` converted to a float and
-        `iata_approved` converted to boolean.
-    """
-    companies = companies.withColumn("iata_approved", _is_true(companies.iata_approved))
-    companies = companies.withColumn("company_rating", _parse_percentage(companies.company_rating))
+    na_tokens = ["NA", "na", "NaN", "nan", "<NA>"]
+    for c in ["education", "major"]:
+        if c in e.columns:
+            e = e.withColumn(
+                c,
+                F.when(F.col(c).isin(na_tokens), None).otherwise(F.col(c).cast(T.StringType())),
+            )
+    fill_map = {c: "NONE" for c in ["education", "major"] if c in e.columns}
+    if fill_map:
+        e = e.fillna(fill_map)
 
-    # Drop columns that aren't used for model training
-    companies = companies.drop('company_location', 'total_fleet_count')
-    return companies
+    for c in ["job_role", "industry"]:
+        if c in e.columns:
+            e = e.filter(F.col(c).isNotNull())
 
+    for c in ["job_id", "company_id"]:
+        if c in e.columns:
+            e = e.filter(F.col(c).isNotNull())
 
-def load_shuttles_to_csv(shuttles: pd.DataFrame) -> pd.DataFrame:
-    """Load shuttles to csv because it's not possible to load excel directly into spark.
-    """
-    return shuttles
+    # --------------------- SALARY CLEANING -----------------------
+    s = df_salary
+    s = _rename_columns(s, {"jobId": "job_id", "salaryInThousands": "salary_k"})
+    s = s.withColumn("job_id", _extract_digits_long("job_id"))
+    s = s.withColumn("salary_k", F.col("salary_k").cast(T.LongType()))
+    s = s.dropna(subset=["job_id", "salary_k"])
 
+    # --------------------- MERGE & DEDUP -------------------------
+    m = e.join(s, on="job_id", how="inner")
+    logger.info("After merge: %d rows", m.count())
 
-def preprocess_shuttles(shuttles: SparkDataFrame) -> SparkDataFrame:
-    """Preprocesses the data for shuttles.
+    dup_full = m.count() - m.dropDuplicates().count()
+    dup_id = m.count() - m.dropDuplicates(["job_id"]).count()
+    if dup_full or dup_id:
+        logger.warning("Duplicates found: full=%d, by job_id=%d. Dropping.", dup_full, dup_id)
+        m = m.dropDuplicates().dropDuplicates(["job_id"])
+    logger.info("After deduplication: %d rows", m.count())
 
-    Args:
-        shuttles: Raw data.
-    Returns:
-        Preprocessed data, with `price` converted to a float and `d_check_complete`,
-        `moon_clearance_complete` converted to boolean.
-    """
-    shuttles = shuttles.withColumn("d_check_complete", _is_true(shuttles.d_check_complete))
-    shuttles = shuttles.withColumn("moon_clearance_complete", _is_true(shuttles.moon_clearance_complete))
-    shuttles = shuttles.withColumn("price", _parse_money(shuttles.price))
+    # --------------------- OUTLIERS -------------------------------
+    if "job_role" in m.columns:
+        m = m.filter(F.col("job_role") != "PRESIDENT")
 
-    # Drop columns that aren't used for model training
-    shuttles = shuttles.drop('shuttle_location', 'engine_type', 'engine_vendor', 'cancellation_policy')
-    return shuttles
+    if "distance_from_cbd" in m.columns:
+        m = m.filter(F.col("distance_from_cbd") <= 100)
 
+    if "salary_k" in m.columns:
+        m = m.filter((F.col("salary_k") != 0) & (F.col("salary_k") != 10_000_000))
 
-def preprocess_reviews(reviews: SparkDataFrame) -> SparkDataFrame:
-    # Drop columns that aren't used for model training
-    reviews = reviews.drop('review_scores_comfort', 'review_scores_amenities', 'review_scores_trip', 'review_scores_crew', 'review_scores_location', 'review_scores_price', 'number_of_reviews', 'reviews_per_month')
-    return reviews
+    if set(["job_role", "salary_k"]).issubset(m.columns):
+        janitors = m.filter(F.col("job_role") == "JANITOR")
+        if janitors.take(1):
+            q1, q3 = janitors.approxQuantile("salary_k", [0.25, 0.75], 0.01)
+            iqr = q3 - q1
+            lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            janitors_clean = janitors.filter((F.col("salary_k") >= lower) & (F.col("salary_k") <= upper))
+            non_janitors = m.filter(F.col("job_role") != "JANITOR")
+            m = janitors_clean.unionByName(non_janitors)
 
-
-def create_model_input_table(
-    shuttles: SparkDataFrame, companies: SparkDataFrame, reviews: SparkDataFrame
-) -> SparkDataFrame:
-    """Combines all data to create a model input table.
-
-    Args:
-        shuttles: Preprocessed data for shuttles.
-        companies: Preprocessed data for companies.
-        reviews: Raw data for reviews.
-    Returns:
-        Model input table.
-
-    """
-    # Rename columns to prevent duplicates
-    shuttles = shuttles.withColumnRenamed("id", "shuttle_id")
-    companies = companies.withColumnRenamed("id", "company_id")
-
-    rated_shuttles = shuttles.join(reviews, "shuttle_id", how="left")
-    model_input_table = rated_shuttles.join(companies, "company_id", how="left")
-    model_input_table = model_input_table.dropna()
-    return model_input_table
+    logger.info("Final dataset ready for saving: %d rows", m.count())
+    return m

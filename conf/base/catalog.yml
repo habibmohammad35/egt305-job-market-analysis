@@ -1,10 +1,54 @@
-employee_dataset:
+## NON-SPARK ENTRIES ##
+
+# Raw
+employee_dataset_raw:
   type: pandas.CSVDataset
   filepath: data/01_raw/Employee_dataset.csv
   load_args:
     dtype_backend: numpy_nullable
-employee_salaries:
+    
+employee_salaries_raw:
   type: pandas.CSVDataset
   filepath: data/01_raw/Employee_salaries.csv
   load_args:
     dtype_backend: numpy_nullable
+
+# Cleaned
+employee_salary_clean:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/employee_salary_clean.parquet
+  load_args:
+    engine: pyarrow
+  save_args:
+    engine: pyarrow
+
+
+## SPARK ENTRIES ##
+# === RAW INPUTS (Spark) ===
+employee_dataset_raw_spark:
+  type: spark.SparkDataset
+  filepath: data/01_raw/Employee_dataset.csv
+  file_format: csv
+  load_args:
+    header: true
+    inferSchema: true
+    mode: PERMISSIVE
+
+employee_salary_raw_spark:
+  type: spark.SparkDataset
+  filepath: data/01_raw/Employee_salaries.csv
+  file_format: csv
+  load_args:
+    header: true
+    inferSchema: true
+    mode: PERMISSIVE
+
+# === CLEAN MERGED OUTPUT (Spark) ===
+employee_salary_clean_spark:
+  type: spark.SparkDataset
+  filepath: data/03_primary/employee_salary_clean_spark
+  file_format: parquet
+  save_args:
+    mode: overwrite
+  load_args:
+    mergeSchema: true
