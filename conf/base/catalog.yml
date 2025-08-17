@@ -26,23 +26,25 @@ employee_salary_clean:
 linear_model:
   type: pickle.PickleDataset
   filepath: data/06_models/linear_model.pkl
-  backend: joblib
+  backend: joblib   # storing Torch state_dict in joblib pickle
 
-randomforest_model:
+nn_model:
   type: pickle.PickleDataset
-  filepath: data/06_models/randomforest_model.pkl
+  filepath: data/06_models/nn_model.pkl
   backend: joblib
 
 # Metrics
+
 linear_metrics:
   type: json.JSONDataset
   filepath: data/08_reporting/linear_metrics.json
 
-randomforest_metrics:
+nn_metrics:
   type: json.JSONDataset
-  filepath: data/08_reporting/randomforest_metrics.json
+  filepath: data/08_reporting/nn_metrics.json
 
 # Predictions
+
 linear_predictions:
   type: pandas.ParquetDataset
   filepath: data/07_model_output/linear_predictions.parquet
@@ -51,17 +53,13 @@ linear_predictions:
   load_args:
     engine: pyarrow
 
-randomforest_predictions:
+nn_predictions:
   type: pandas.ParquetDataset
-  filepath: data/07_model_output/randomforest_predictions.parquet
+  filepath: data/07_model_output/nn_predictions.parquet
   save_args:
     index: False
   load_args:
     engine: pyarrow
-
-
-
-
 
 
 ## SPARK ENTRIES ##
