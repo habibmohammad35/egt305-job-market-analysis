@@ -1,0 +1,11 @@
+# Logistic Regression params
+skip_linear: False              # Set True to skip training
+
+# Random Forest params
+rf_n_estimators: 50              # Number of trees
+rf_max_depth: 8              # Max depth of trees (None = unlimited)
+skip_rf: False                    # Set True to skip training
+
+# Data split params
+test_size: 0.2                    # Test fraction (20%)
+random_state: 42                  # For reproducibility

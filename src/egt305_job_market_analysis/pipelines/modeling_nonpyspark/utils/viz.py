@@ -264,3 +264,44 @@ def plot_classification_evaluation(
     plt.tight_layout()
     plt.savefig(f"{output_dir}/{model_name}_summary_plots.png")
     plt.show()
+
+def plot_regression_evaluation(
+    metrics: dict,
+    predictions_df: pd.DataFrame,
+    model_name: str = "Model",
+    output_dir: str = "data/08_reporting"
+) -> None:
+    """
+    Display regression metrics and diagnostic plots, save plots to disk.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"\nMetrics for: {model_name}\n" + "-"*40)
+    print(f"R²       : {metrics.get('r2', 0):.4f}")
+    print(f"MAE      : {metrics.get('mae', 0):.4f}")
+    print(f"MSE      : {metrics.get('mse', 0):.4f}")
+    print(f"RMSE     : {metrics.get('rmse', 0):.4f}")
+
+    # Scatter plot of predicted vs actual
+    plt.figure(figsize=(6,6))
+    plt.scatter(predictions_df["y_true"], predictions_df["y_pred"], alpha=0.3)
+    plt.plot([predictions_df["y_true"].min(), predictions_df["y_true"].max()],
+             [predictions_df["y_true"].min(), predictions_df["y_true"].max()],
+             "r--")
+    plt.xlabel("Actual Salary")
+    plt.ylabel("Predicted Salary")
+    plt.title(f"{model_name} - Predicted vs Actual")
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/{model_name}_scatter.png")
+    plt.show()
+
+    # Residual plot
+    residuals = predictions_df["y_true"] - predictions_df["y_pred"]
+    plt.figure(figsize=(6,4))
+    plt.hist(residuals, bins=40, edgecolor="k")
+    plt.title(f"{model_name} - Residuals")
+    plt.xlabel("Residual (Actual - Predicted)")
+    plt.ylabel("Frequency")
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/{model_name}_residuals.png")
+    plt.show()
