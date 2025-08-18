@@ -19,7 +19,7 @@ def register_pipelines() -> dict[str, Pipeline]:
         "__default__": nonpyspark_pipeline + pyspark_pipeline,
 
         # Named entries so to run each separately
-        "nonspark": nonpyspark_pipeline + modeling_nonspark_pipeline, 
+        "nonspark_full": nonpyspark_pipeline + modeling_nonspark_pipeline, 
         "nonspark_modeling": modeling_nonspark_pipeline,
         "data_processing_pyspark": pyspark_pipeline,
     }

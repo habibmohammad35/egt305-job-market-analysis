@@ -1,5 +1,6 @@
 import logging
 import pandas as pd
+from sklearn.decomposition import PCA
 
 logger = logging.getLogger(__name__)
 
@@ -154,3 +155,67 @@ def clean_and_merge_employee_salary(
 
     logger.info("Final dataset ready for saving: %d rows", len(m))
     return m
+
+def pre_split_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create pre-split features that do not use target (salary).
+    """
+    # Education mapping
+    edu_map = {
+        "NONE": 0,
+        "HIGH_SCHOOL": 1,
+        "BACHELORS": 2,
+        "MASTERS": 3,
+        "DOCTORAL": 4,
+    }
+    df["education_level"] = df["education"].map(edu_map).astype("int8")
+
+    # Ordinal job role rank
+    role_rank = {
+        "CEO": 6,
+        "CTO": 5, "CFO": 5,
+        "VICE_PRESIDENT": 4,
+        "MANAGER": 3,
+        "SENIOR": 2,
+        "JUNIOR": 1,
+        "JANITOR": 0,
+    }
+    df["job_role_rank"] = df["job_role"].map(role_rank).astype("int8")
+
+    industry_score = {
+        "EDUCATION": 1,
+        "SERVICE": 1,
+        "AUTO": 2,
+        "HEALTH": 3,
+        "WEB": 4,
+        "FINANCE": 5,
+        "OIL": 5
+    }
+    df["industry_score"] = df["industry"].map(industry_score).astype("int8")
+
+    major_score = {
+        "NONE": 0,
+        "LITERATURE": 1,
+        "BIOLOGY": 2,
+        "CHEMISTRY": 3,
+        "PHYSICS": 4,
+        "COMPSCI": 5,
+        "MATH": 6,
+        "BUSINESS": 7,
+        "ENGINEERING": 8
+    }
+    df["major_score"] = df["major"].map(major_score).astype("int8")
+
+    # --- Handcrafted score (simple sum of meaningful features) ---
+    handcrafted_features = ["industry_score", "major_score", "job_role_rank", "education_level"]
+    df["handcrafted_score"] = df[handcrafted_features].sum(axis=1)
+
+    # Cross-relations
+    df["edu_major"] = df["education"].astype(str) + "_" + df["major"].astype(str)
+    df["industry_role"] = df["industry"].astype(str) + "_" + df["job_role"].astype(str)
+    df["edu_major"] = df["edu_major"].astype("category")
+    df["industry_role"] = df["industry_role"].astype("category")
+
+    df = df.drop(columns=["education", "job_role", "industry" ,"major" ,"company_id"])
+    return df
+

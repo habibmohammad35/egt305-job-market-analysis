@@ -1,7 +1,8 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
 from .nodes import (
-    clean_and_merge_employee_salary
+    clean_and_merge_employee_salary,
+    pre_split_feature_engineering
 )
 
 
@@ -16,5 +17,12 @@ def create_pipeline(**kwargs) -> Pipeline:
                 outputs="employee_salary_clean",
                 name="clean_merge_employee_salary_node",
             ),
+            node(
+                func=pre_split_feature_engineering,
+                inputs="employee_salary_clean",
+                outputs="employee_dataset_features",
+                name="pre_split_feature_engineering_node",
+            ),
+            
         ]
     )

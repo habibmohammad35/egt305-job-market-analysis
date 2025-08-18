@@ -106,6 +106,65 @@ def plot_numeric_distribution(df: pd.DataFrame) -> None:
     plt.tight_layout()
     plt.show()
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def plot_evaluation(metrics, predictions, history, title_prefix="Model"):
+    """
+    Visualize model evaluation results.
+    
+    Args:
+        metrics (dict): Dictionary with 'r2', 'mae', 'rmse'.
+        predictions (pd.DataFrame): Must have 'y_true' and 'y_pred'.
+        history (dict): Must have 'train_loss' and 'val_loss'.
+        title_prefix (str): Title prefix for plots.
+    """
+    # -----------------------
+    # 1. Print Metrics
+    # -----------------------
+    print(f"\n{title_prefix} Performance Metrics")
+    print("-" * 40)
+    for k, v in metrics.items():
+        print(f"{k.upper():<6}: {v:.4f}")
+
+    # -----------------------
+    # 2. Loss Curves
+    # -----------------------
+    plt.figure(figsize=(14, 4))
+    plt.subplot(1, 3, 1)
+    plt.plot(history["train_loss"], label="Train Loss")
+    plt.plot(history["val_loss"], label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("MSE Loss")
+    plt.title(f"{title_prefix} Loss Curves")
+    plt.legend()
+
+    # -----------------------
+    # 3. Predicted vs True
+    # -----------------------
+    plt.subplot(1, 3, 2)
+    sns.scatterplot(x=predictions["y_true"], y=predictions["y_pred"], alpha=0.6)
+    max_val = max(predictions["y_true"].max(), predictions["y_pred"].max())
+    min_val = min(predictions["y_true"].min(), predictions["y_pred"].min())
+    plt.plot([min_val, max_val], [min_val, max_val], "r--", lw=2)
+    plt.xlabel("True Salary (k)")
+    plt.ylabel("Predicted Salary (k)")
+    plt.title(f"{title_prefix} Predictions vs True")
+
+    # -----------------------
+    # 4. Residuals Plot
+    # -----------------------
+    plt.subplot(1, 3, 3)
+    residuals = predictions["y_true"] - predictions["y_pred"]
+    sns.scatterplot(x=predictions["y_true"], y=residuals, alpha=0.6)
+    plt.axhline(0, color="r", linestyle="--")
+    plt.xlabel("True Salary (k)")
+    plt.ylabel("Residual (True - Pred)")
+    plt.title(f"{title_prefix} Residuals")
+
+    plt.tight_layout()
+    plt.show()
+
 def plot_categorical_distributions(
     df: pd.DataFrame,
     columns: List[str],
@@ -171,71 +230,3 @@ def plot_categorical_distributions(
 
     plt.tight_layout()
     plt.show()
-
-def plot_model_evaluation(
-    metrics: dict,
-    predictions_df: pd.DataFrame,
-    model_name: str = "Model",
-    feature_names: list | None = None,
-    model_type: str = "linear",
-    output_dir: str = "reports"
-) -> None:
-    """
-    Display regression metrics and diagnostic plots,
-    optionally with feature importance for linear models.
-
-    Args:
-        metrics (dict): Model evaluation metrics (r2, mae, rmse, etc).
-        predictions_df (pd.DataFrame): Must contain 'y_true' and 'y_pred'.
-        model_name (str): Display name for plots and saved files.
-        feature_names (list): Feature names if feature importance is available.
-        model_type (str): 'linear' or 'nn' to handle feature importance display.
-        output_dir (str): Where to save plots (default: reports).
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    # ---- Print Metrics ----
-    print(f"\nMetrics for {model_name}\n" + "-"*40)
-    for k, v in metrics.items():
-        # Some entries (like coefficients or dicts) aren't floats
-        if isinstance(v, (int, float, np.floating)):
-            print(f"{k.upper():<12}: {v:.4f}")
-        else:
-            print(f"{k.upper():<12}: {v}")
-
-    # ---- Scatter Plot y_true vs y_pred ----
-    plt.figure(figsize=(6, 6))
-    sns.scatterplot(x="y_true", y="y_pred", data=predictions_df, alpha=0.6)
-    plt.plot([predictions_df["y_true"].min(), predictions_df["y_true"].max()],
-             [predictions_df["y_true"].min(), predictions_df["y_true"].max()],
-             color="red", linestyle="--")
-    plt.title(f"{model_name} - Predictions vs True")
-    plt.xlabel("True Values")
-    plt.ylabel("Predicted Values")
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/{model_name}_scatter.png")
-    plt.show()
-
-    # ---- Residuals Plot ----
-    predictions_df = predictions_df.copy()
-    predictions_df["residuals"] = predictions_df["y_true"] - predictions_df["y_pred"]
-    plt.figure(figsize=(6, 4))
-    sns.histplot(predictions_df["residuals"], bins=30, kde=True)
-    plt.title(f"{model_name} - Residuals Distribution")
-    plt.xlabel("Residuals (y_true - y_pred)")
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/{model_name}_residuals.png")
-    plt.show()
-
-    # ---- Feature Importance for Linear Models ----
-    if model_type == "linear" and "coefficients" in metrics and feature_names is not None:
-        coefs = pd.Series(metrics["coefficients"], index=feature_names)
-        coefs = coefs.sort_values(key=np.abs, ascending=False).head(20)
-
-        plt.figure(figsize=(6, 8))
-        coefs.plot(kind="barh")
-        plt.title(f"{model_name} - Top Features by Coefficient")
-        plt.xlabel("Coefficient Value")
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/{model_name}_feature_importance.png")
-        plt.show()

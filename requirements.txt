@@ -8,3 +8,6 @@ scikit-learn~=1.5.1
 seaborn~=0.12.1
 setuptools; python_version >= "3.12"
 nbstripout
+tqdm
+pyspark
+category_encoders

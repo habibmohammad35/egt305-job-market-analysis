@@ -104,3 +104,80 @@ def clean_and_merge_employee_salary_spark(
 
     logger.info("Final dataset ready for saving: %d rows", m.count())
     return m
+
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType
+
+def pre_split_feature_engineering_spark(df: DataFrame) -> DataFrame:
+    """
+    Create pre-split features that do not use target (salary).
+    """
+
+    # --- Dictionaries as Spark maps ---
+    edu_map = {
+        "NONE": 0,
+        "HIGH_SCHOOL": 1,
+        "BACHELORS": 2,
+        "MASTERS": 3,
+        "DOCTORAL": 4,
+    }
+    role_rank = {
+        "CEO": 6,
+        "CTO": 5, "CFO": 5,
+        "VICE_PRESIDENT": 4,
+        "MANAGER": 3,
+        "SENIOR": 2,
+        "JUNIOR": 1,
+        "JANITOR": 0,
+    }
+    industry_score = {
+        "EDUCATION": 1,
+        "SERVICE": 1,
+        "AUTO": 2,
+        "HEALTH": 3,
+        "WEB": 4,
+        "FINANCE": 5,
+        "OIL": 5
+    }
+    major_score = {
+        "NONE": 0,
+        "LITERATURE": 1,
+        "BIOLOGY": 2,
+        "CHEMISTRY": 3,
+        "PHYSICS": 4,
+        "COMPSCI": 5,
+        "MATH": 6,
+        "BUSINESS": 7,
+        "ENGINEERING": 8
+    }
+
+    # Helper: dictionary -> Spark map expression
+    def dict_to_map(d: dict):
+        return F.create_map([F.lit(x) for kv in d.items() for x in kv])
+
+    # Apply mappings
+    df = df.withColumn("education_level", dict_to_map(edu_map)[F.col("education")].cast("int"))
+    df = df.withColumn("job_role_rank", dict_to_map(role_rank)[F.col("job_role")].cast("int"))
+    df = df.withColumn("industry_score", dict_to_map(industry_score)[F.col("industry")].cast("int"))
+    df = df.withColumn("major_score", dict_to_map(major_score)[F.col("major")].cast("int"))
+
+    # Handcrafted score
+    df = df.withColumn(
+        "handcrafted_score",
+        (F.col("industry_score") +
+         F.col("major_score") +
+         F.col("job_role_rank") +
+         F.col("education_level")).cast("int")
+    )
+
+    # Cross-relations
+    df = df.withColumn("edu_major", F.concat_ws("_", F.col("education"), F.col("major")))
+    df = df.withColumn("industry_role", F.concat_ws("_", F.col("industry"), F.col("job_role")))
+
+    # Drop unused columns
+    df = df.drop("education", "job_role", "industry", "major", "company_id")
+
+    return df
+
+

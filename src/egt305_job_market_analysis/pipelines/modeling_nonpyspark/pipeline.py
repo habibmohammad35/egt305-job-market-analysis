@@ -1,24 +1,54 @@
 from kedro.pipeline import Pipeline, node, pipeline
-from .nodes import split_and_encode_model_data, train_linear_torch, train_nn_torch
+from .nodes import (
+    train_nn_torch,
+    train_linear_regression_std,
+    train_random_forest_std,
+)
 
 def create_pipeline(**kwargs) -> Pipeline:
     return pipeline([
         node(
-            func=split_and_encode_model_data,
-            inputs="employee_salary_clean",   
-            outputs=["X_train", "X_test", "y_train", "y_test", "job_train", "job_test"],
-            name="split_encode_node"
-        ),
-        node(
-            func=train_linear_torch,
-            inputs=["X_train", "y_train", "X_test", "y_test", "job_test"],
-            outputs=["linear_model", "linear_metrics", "linear_predictions"],
-            name="train_linear_torch_node"
-        ),
-        node(
             func=train_nn_torch,
-            inputs=["X_train", "y_train", "X_test", "y_test", "job_test"],
-            outputs=["nn_model", "nn_metrics", "nn_predictions"],
-            name="train_nn_torch_node"
-        )
+            inputs="employee_dataset_features",
+            outputs=[
+                "nn_model",
+                "nn_metrics",
+                "nn_predictions",
+                "nn_history",
+                "nn_metadata",
+                "nn_X_train",
+                "nn_X_test",
+                "nn_y_train",
+                "nn_y_test",
+                "nn_job_train",
+                "nn_job_test",
+            ],
+            name="train_nn_torch_node",
+        ),
+        node(
+            func=train_linear_regression_std,
+            inputs="employee_dataset_features",
+            outputs=[
+                "lr_model",
+                "lr_metrics",
+                "lr_predictions",
+                "lr_history",
+                "lr_metadata",
+                "lr_splits",
+            ],
+            name="train_linear_regression_node",
+        ),
+        node(
+            func=train_random_forest_std,
+            inputs="employee_dataset_features",
+            outputs=[
+                "rf_model",
+                "rf_metrics",
+                "rf_predictions",
+                "rf_history",
+                "rf_metadata",
+                "rf_splits",
+            ],
+            name="train_random_forest_node",
+        ),
     ])
