@@ -4,9 +4,10 @@ https://docs.kedro.org/en/stable/kedro_project_setup/settings.html."""
 
 # Instantiated project hooks.
 from egt305_job_market_analysis.hooks import SparkHooks  # noqa: E402
+from egt305_job_market_analysis.hooks import TimingHook
 
 # Hooks are executed in a Last-In-First-Out (LIFO) order.
-HOOKS = (SparkHooks(),)
+HOOKS = (SparkHooks(),TimingHook())
 
 # Installed plugins for which to disable hook auto-registration.
 # DISABLE_HOOKS_FOR_PLUGINS = ("kedro-viz",)

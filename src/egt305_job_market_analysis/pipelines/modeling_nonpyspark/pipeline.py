@@ -16,14 +16,9 @@ def create_pipeline(**kwargs) -> Pipeline:
                 "nn_predictions",
                 "nn_history",
                 "nn_metadata",
-                "nn_X_train",
-                "nn_X_test",
-                "nn_y_train",
-                "nn_y_test",
-                "nn_job_train",
-                "nn_job_test",
             ],
-            name="train_nn_torch_node",
+            name="train_nn_torch_node_nonspark",
+            tags=["nonspark"]
         ),
         node(
             func=train_linear_regression_std,
@@ -34,9 +29,8 @@ def create_pipeline(**kwargs) -> Pipeline:
                 "lr_predictions",
                 "lr_history",
                 "lr_metadata",
-                "lr_splits",
             ],
-            name="train_linear_regression_node",
+            name="train_linear_regression_node_nonspark",
         ),
         node(
             func=train_random_forest_std,
@@ -47,8 +41,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                 "rf_predictions",
                 "rf_history",
                 "rf_metadata",
-                "rf_splits",
             ],
-            name="train_random_forest_node",
+            name="train_random_forest_node_nonspark",
         ),
     ])

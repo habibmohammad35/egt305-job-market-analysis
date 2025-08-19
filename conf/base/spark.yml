@@ -4,7 +4,6 @@ spark.executor.memory: 4g            # give executors more heap
 spark.executor.cores: 2              # parallelism per executor
 
 # Parquet/ORC tuning
-spark.sql.parquet.compression.codec: snappy   # default, but explicit
 spark.sql.parquet.writer.maxRowGroupSize: 134217728  # 128 MB row groups (instead of 1 GB)
 spark.sql.parquet.enableVectorizedReader: true       # faster scans
 

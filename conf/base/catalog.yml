@@ -31,55 +31,6 @@ employee_dataset_features:
   save_args:
     engine: pyarrow
 
-# Model Input
-X_train:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/X_train.parquet
-  load_args:
-    engine: pyarrow
-  save_args:
-    engine: pyarrow
-
-X_test:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/X_test.parquet
-  load_args:
-    engine: pyarrow
-  save_args:
-    engine: pyarrow
-
-y_train:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/y_train.parquet
-  load_args:
-    engine: pyarrow
-  save_args:
-    engine: pyarrow
-
-y_test:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/y_test.parquet
-  load_args:
-    engine: pyarrow
-  save_args:
-    engine: pyarrow
-
-job_train:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/job_train.parquet
-  load_args:
-    engine: pyarrow
-  save_args:
-    engine: pyarrow
-
-job_test:
-  type: pandas.ParquetDataset
-  filepath: data/05_model_input/job_test.parquet
-  load_args:
-    engine: pyarrow
-  save_args:
-    engine: pyarrow
-
 # Model Artifacts
 nn_model:
   type: pickle.PickleDataset
@@ -98,6 +49,13 @@ nn_history:
 nn_features:
   type: json.JSONDataset
   filepath: data/08_reporting/nn_features.json
+
+nn_metadata:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata.json
+  save_args:
+    indent: 2
+
 
 # Predictions
 nn_predictions:
@@ -124,17 +82,12 @@ lr_predictions:
   filepath: data/07_model_output/lr_predictions.parquet
 
 lr_history:
-  type: pickle.PickleDataset
-  filepath: data/08_reporting/lr_history.pkl
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_history.json
 
 lr_metadata:
   type: json.JSONDataset
   filepath: data/08_reporting/lr_metadata.json
-
-lr_splits:
-  type: pickle.PickleDataset
-  filepath: data/05_model_input/lr_splits.pkl
-
 
 # ==========================
 # Random Forest outputs
@@ -152,16 +105,12 @@ rf_predictions:
   filepath: data/07_model_output/rf_predictions.parquet
 
 rf_history:
-  type: pickle.PickleDataset
-  filepath: data/08_reporting/rf_history.pkl
+  type: json.JSONDataset
+  filepath: data/08_reporting/rf_history.json
 
 rf_metadata:
   type: json.JSONDataset
   filepath: data/08_reporting/rf_metadata.json
-
-rf_splits:
-  type: pickle.PickleDataset
-  filepath: data/05_model_input/rf_splits.pkl
 
 ## SPARK ENTRIES ##
 # === RAW INPUTS (Spark) ===
@@ -199,3 +148,114 @@ employee_features_spark:
   filepath: data/04_feature/employee_features_spark
   save_args:
     mode: overwrite
+
+# --- OUTPUTS ---
+nn_model_spark:
+  type: pickle.PickleDataset
+  filepath: data/06_models/nn_model_spark.pkl
+
+nn_metrics_spark:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metrics_spark.json
+  save_args:
+    indent: 2
+
+nn_predictions_spark:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/nn_predictions_spark.parquet
+  save_args:
+    index: false
+
+nn_history_spark:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_history_spark.json
+  save_args:
+    indent: 2
+
+nn_metadata_spark:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata_spark.json
+  save_args:
+    indent: 2
+
+
+# ==============================
+# NONSPARK fine-tuned outputs
+# ==============================
+nn_model_nonspark_finetuned:
+  type: MemoryDataset   # PyTorch state_dict (cannot be saved directly)
+
+nn_metrics_nonspark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metrics_nonspark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_predictions_nonspark_finetuned:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/nn_predictions_nonspark_finetuned.csv
+  save_args:
+    index: False
+
+nn_history_nonspark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_history_nonspark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_metadata_nonspark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata_nonspark_finetuned.json
+  save_args:
+    indent: 2
+
+
+# ==============================
+# SPARK fine-tuned outputs
+# ==============================
+nn_model_spark_finetuned:
+  type: MemoryDataset   # PyTorch state_dict (same reason as above)
+
+nn_metrics_spark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metrics_spark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_predictions_spark_finetuned:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/nn_predictions_spark_finetuned.csv
+  save_args:
+    index: False
+
+nn_history_spark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_history_spark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_metadata_spark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata_spark_finetuned.json
+  save_args:
+    indent: 2
+
+
+# ===============================
+# MLlib Linear Regression outputs
+# ===============================
+lr_mllib_metrics:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_mllib_metrics.json
+
+lr_mllib_predictions:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/lr_mllib_predictions.parquet
+
+lr_mllib_history:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_mllib_history.json
+
+lr_mllib_metadata:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_mllib_metadata.json

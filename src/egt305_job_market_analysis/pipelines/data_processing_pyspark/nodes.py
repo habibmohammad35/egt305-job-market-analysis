@@ -171,13 +171,19 @@ def pre_split_feature_engineering_spark(df: DataFrame) -> DataFrame:
          F.col("education_level")).cast("int")
     )
 
-    # Cross-relations
-    df = df.withColumn("edu_major", F.concat_ws("_", F.col("education"), F.col("major")))
-    df = df.withColumn("industry_role", F.concat_ws("_", F.col("industry"), F.col("job_role")))
-
     # Drop unused columns
     df = df.drop("education", "job_role", "industry", "major", "company_id")
+    # --- Missing data logger ---
+    cols_to_check = ["education_level", "job_role_rank", "industry_score",
+                     "major_score", "handcrafted_score"]
 
+    null_counts = df.select([F.count(F.when(F.col(c).isNull(), c)).alias(c) for c in cols_to_check]).collect()[0].asDict()
+    total_nulls = sum(null_counts.values())
+
+    if total_nulls > 0:
+        logger.warning("Null values detected in engineered features: %s", null_counts)
+    else:
+        logger.info("No missing values in engineered features.")
     return df
 
 

@@ -9,3 +9,29 @@ skip_rf: False                    # Set True to skip training
 # Data split params
 test_size: 0.2                    # Test fraction (20%)
 random_state: 42                  # For reproducibility
+
+modeling_pyspark:
+  cat_cols: ["edu_major", "industry_role"]
+  test_size: 0.2
+  random_state: 42
+  batch_size: 256
+  lr: 0.001
+  epochs: 30
+  patience: 5
+  num_processes: 4       # set to number of Spark tasks
+  param_grid:
+    - lr: 1e-3
+      batch_size: 128
+      weight_decay: 0.0
+    - lr: 5e-4
+      batch_size: 256
+      weight_decay: 1e-5
+
+modeling_nonspark:
+  param_grid:
+    - lr: 1e-3
+      batch_size: 128
+      weight_decay: 0.0
+    - lr: 5e-4
+      batch_size: 256
+      weight_decay: 1e-5
