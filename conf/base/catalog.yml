@@ -1,11 +1,261 @@
-employee_dataset:
+## NON-SPARK ENTRIES ##
+
+# Raw
+employee_dataset_raw:
   type: pandas.CSVDataset
   filepath: data/01_raw/Employee_dataset.csv
   load_args:
-    dtype_backend: numpy_nullable # Prevent Silent Dtype changes
-
-employee_salaries:
+    dtype_backend: numpy_nullable
+    
+employee_salaries_raw:
   type: pandas.CSVDataset
   filepath: data/01_raw/Employee_salaries.csv
   load_args:
     dtype_backend: numpy_nullable
+
+# Cleaned
+employee_salary_clean:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/employee_salary_clean.parquet
+  load_args:
+    engine: pyarrow
+  save_args:
+    engine: pyarrow
+
+# Feature Engineered
+employee_dataset_features:
+  type: pandas.ParquetDataset
+  filepath: data/04_feature/employee_dataset_features.parquet
+  load_args:
+    engine: pyarrow
+  save_args:
+    engine: pyarrow
+
+# Model Artifacts
+nn_model:
+  type: pickle.PickleDataset
+  filepath: data/06_models/nn_model.pkl
+  backend: joblib
+
+# Reporting
+nn_metrics:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metrics.json
+
+nn_history:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_history.json
+
+nn_features:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_features.json
+
+nn_metadata:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata.json
+  save_args:
+    indent: 2
+
+
+# Predictions
+nn_predictions:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/nn_predictions.parquet
+  save_args:
+    index: False
+  load_args:
+    engine: pyarrow
+
+# ==========================
+# Linear Regression outputs
+# ==========================
+lr_model:
+  type: pickle.PickleDataset
+  filepath: data/06_models/lr_model.pkl
+
+lr_metrics:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_metrics.json
+
+lr_predictions:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/lr_predictions.parquet
+
+lr_history:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_history.json
+
+lr_metadata:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_metadata.json
+
+# ==========================
+# Random Forest outputs
+# ==========================
+rf_model:
+  type: pickle.PickleDataset
+  filepath: data/06_models/rf_model.pkl
+
+rf_metrics:
+  type: json.JSONDataset
+  filepath: data/08_reporting/rf_metrics.json
+
+rf_predictions:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/rf_predictions.parquet
+
+rf_history:
+  type: json.JSONDataset
+  filepath: data/08_reporting/rf_history.json
+
+rf_metadata:
+  type: json.JSONDataset
+  filepath: data/08_reporting/rf_metadata.json
+
+## SPARK ENTRIES ##
+# === RAW INPUTS (Spark) ===
+employee_dataset_raw_spark:
+  type: spark.SparkDataset
+  filepath: data/01_raw/Employee_dataset.csv
+  file_format: csv
+  load_args:
+    header: true
+    inferSchema: true
+    mode: PERMISSIVE
+
+employee_salary_raw_spark:
+  type: spark.SparkDataset
+  filepath: data/01_raw/Employee_salaries.csv
+  file_format: csv
+  load_args:
+    header: true
+    inferSchema: true
+    mode: PERMISSIVE
+
+# === CLEAN MERGED OUTPUT (Spark) ===
+employee_salary_clean_spark:
+  type: spark.SparkDataset
+  filepath: data/03_primary/employee_salary_clean_spark
+  file_format: parquet
+  save_args:
+    mode: overwrite
+  load_args:
+    mergeSchema: true
+
+employee_features_spark:
+  type: spark.SparkDataset
+  file_format: parquet
+  filepath: data/04_feature/employee_features_spark
+  save_args:
+    mode: overwrite
+
+# --- OUTPUTS ---
+nn_model_spark:
+  type: pickle.PickleDataset
+  filepath: data/06_models/nn_model_spark.pkl
+
+nn_metrics_spark:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metrics_spark.json
+  save_args:
+    indent: 2
+
+nn_predictions_spark:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/nn_predictions_spark.parquet
+  save_args:
+    index: false
+
+nn_history_spark:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_history_spark.json
+  save_args:
+    indent: 2
+
+nn_metadata_spark:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata_spark.json
+  save_args:
+    indent: 2
+
+
+# ==============================
+# NONSPARK fine-tuned outputs
+# ==============================
+nn_model_nonspark_finetuned:
+  type: MemoryDataset   # PyTorch state_dict (cannot be saved directly)
+
+nn_metrics_nonspark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metrics_nonspark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_predictions_nonspark_finetuned:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/nn_predictions_nonspark_finetuned.csv
+  save_args:
+    index: False
+
+nn_history_nonspark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_history_nonspark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_metadata_nonspark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata_nonspark_finetuned.json
+  save_args:
+    indent: 2
+
+
+# ==============================
+# SPARK fine-tuned outputs
+# ==============================
+nn_model_spark_finetuned:
+  type: MemoryDataset   # PyTorch state_dict (same reason as above)
+
+nn_metrics_spark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metrics_spark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_predictions_spark_finetuned:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/nn_predictions_spark_finetuned.csv
+  save_args:
+    index: False
+
+nn_history_spark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_history_spark_finetuned.json
+  save_args:
+    indent: 2
+
+nn_metadata_spark_finetuned:
+  type: json.JSONDataset
+  filepath: data/08_reporting/nn_metadata_spark_finetuned.json
+  save_args:
+    indent: 2
+
+
+# ===============================
+# MLlib Linear Regression outputs
+# ===============================
+lr_mllib_metrics:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_mllib_metrics.json
+
+lr_mllib_predictions:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/lr_mllib_predictions.parquet
+
+lr_mllib_history:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_mllib_history.json
+
+lr_mllib_metadata:
+  type: json.JSONDataset
+  filepath: data/08_reporting/lr_mllib_metadata.json

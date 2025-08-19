@@ -8,6 +8,8 @@ import pandas as pd
 from matplotlib.patches import Rectangle
 from typing import List, Optional
 import numpy as np
+from sklearn.metrics import confusion_matrix
+import os
 
 # Functions
 def set_plot_style() -> None:
@@ -237,4 +239,94 @@ def plot_clustered_bars(df, x_col, y_cols, title=None):
     plt.xticks(rotation=45, ha='right')
     plt.legend(title="Metric", fontsize=10, title_fontsize=11)
     plt.tight_layout()
+    plt.show()
+
+# Reused previous function for classification evaluation
+def plot_classification_evaluation(
+    metrics: dict,
+    predictions_df: pd.DataFrame,
+    model_name: str = "Model",
+    top_n_features: int = 20,
+    output_dir: str = "data/08_reporting"
+) -> None:
+    """
+    Display all metrics, confusion matrix, and diagnostic plots (ROC, PRC, Feature Importance),
+    and save the plots to disk.
+
+    Args:
+        metrics (dict): Model evaluation metrics.
+        predictions_df (pd.DataFrame): Must contain 'y_true' and 'y_pred'.
+        model_name (str): Name to display on and use for saved plots.
+        top_n_features (int): Number of top features to include in the bar chart.
+        output_dir (str): Directory to save plots (default is data/08_reporting).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"\nMetrics for: {model_name}\n" + "-"*40)
+    print(f"Accuracy            : {metrics.get('accuracy', 0):.4f}")
+    print(f"ROC AUC             : {metrics.get('roc_auc', 0):.4f}")
+    print(f"PRC AUC             : {metrics.get('prc_auc', 0):.4f}")
+
+    print("\nClass-wise Report:")
+    class_keys = [
+        k for k in metrics['classification_report'].keys()
+        if k not in ['accuracy', 'macro avg', 'weighted avg']
+    ]
+    for label in sorted(class_keys):
+        cls = metrics['classification_report'].get(label, {})
+        print(f"  Class {label}:")
+        print(f"    Precision: {cls.get('precision', 0):.3f} | Recall: {cls.get('recall', 0):.3f} | F1: {cls.get('f1-score', 0):.3f} | Support: {cls.get('support', 0)}")
+
+    print("\nMacro Avg:")
+    macro = metrics["classification_report"].get("macro avg", {})
+    print(f"    Precision: {macro.get('precision', 0):.3f} | Recall: {macro.get('recall', 0):.3f} | F1: {macro.get('f1-score', 0):.3f}")
+
+    print("\nWeighted Avg:")
+    weighted = metrics["classification_report"].get("weighted avg", {})
+    print(f"    Precision: {weighted.get('precision', 0):.3f} | Recall: {weighted.get('recall', 0):.3f} | F1: {weighted.get('f1-score', 0):.3f}")
+
+    # Confusion Matrix
+    cm = confusion_matrix(predictions_df["y_true"], predictions_df["y_pred"])
+    plt.figure(figsize=(4, 4))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=False)
+    plt.title(f"{model_name} - Confusion Matrix")
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/{model_name}_confusion_matrix.png")
+    plt.show()
+
+    # PRC, ROC, Feature Importance
+    prc = metrics.get("prc_curve", {})
+    roc = metrics.get("roc_curve", {})
+    feature_importance = pd.Series(metrics.get("feature_importance", {})).sort_values(ascending=False).head(top_n_features)
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    # PRC
+    axes[0].plot(prc.get("recall", []), prc.get("precision", []), label=model_name)
+    axes[0].set_title("Precision-Recall Curve")
+    axes[0].set_xlabel("Recall")
+    axes[0].set_ylabel("Precision")
+    axes[0].grid(True)
+    axes[0].legend()
+
+    # ROC
+    axes[1].plot(roc.get("fpr", []), roc.get("tpr", []), label=model_name)
+    axes[1].plot([0, 1], [0, 1], linestyle="--", color="gray")
+    axes[1].set_title("ROC Curve")
+    axes[1].set_xlabel("False Positive Rate")
+    axes[1].set_ylabel("True Positive Rate")
+    axes[1].grid(True)
+    axes[1].legend()
+
+    # Feature Importance
+    feature_importance.plot(kind="barh", ax=axes[2])
+    axes[2].invert_yaxis()
+    axes[2].set_title(f"Top {top_n_features} Features\n({model_name})")
+    axes[2].set_xlabel("Importance (|coefficient| or score)")
+    axes[2].grid(True, axis='x')
+
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/{model_name}_summary_plots.png")
     plt.show()
