@@ -330,3 +330,105 @@ def plot_classification_evaluation(
     plt.tight_layout()
     plt.savefig(f"{output_dir}/{model_name}_summary_plots.png")
     plt.show()
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def show_model_results(results: dict, feature_names=None, title="Model Results"):
+    """
+    Nicely display regression results with metrics and optional plots.
+    
+    Args:
+        results (dict): Output dictionary from Kedro node (LR or RF).
+        feature_names (list, optional): Names of features (for coefficients/importances).
+        title (str): Title for the plots.
+    """
+    # ======================
+    # 1. Print metrics as table
+    # ======================
+    metrics = {
+        "Validation": {
+            "RMSE": results.get("val_rmse"),
+            "MAE": results.get("val_mae"),
+            "R²": results.get("val_r2"),
+        },
+        "Test": {
+            "RMSE": results.get("test_rmse"),
+            "MAE": results.get("test_mae"),
+            "R²": results.get("test_r2"),
+        }
+    }
+    df_metrics = pd.DataFrame(metrics).T
+    display(df_metrics.round(4))
+
+    # ======================
+    # 2. Plot metrics
+    # ======================
+    fig, ax = plt.subplots(1, 2, figsize=(14, 6))  # wider for more spacing
+
+    # Left: RMSE & MAE
+    df_err = df_metrics[["RMSE", "MAE"]]
+    bars_err = df_err.plot(kind="bar", ax=ax[0])
+    ax[0].set_title(f"{title} - Errors (Lower = Better)")
+    ax[0].set_ylabel("Error")
+    ax[0].grid(True, axis="y")
+
+    # Add values on bars
+    for container in bars_err.containers:
+        bars_err.bar_label(container, fmt="%.2f", label_type="edge")
+
+    # Right: R²
+    bars_r2 = df_metrics[["R²"]].plot(kind="bar", ax=ax[1])
+    ax[1].set_title(f"{title} - R² Score (Higher = Better)")
+    ax[1].set_ylabel("R²")
+    ax[1].set_ylim(0, 1)
+    ax[1].grid(True, axis="y")
+
+    for container in bars_r2.containers:
+        bars_r2.bar_label(container, fmt="%.2f", label_type="edge")
+
+    plt.subplots_adjust(wspace=0.4)  # more horizontal space between subplots
+    plt.show()
+
+    # ======================
+    # 3. Plot coefficients or feature importances
+    # ======================
+    if "coefficients" in results:  # Linear Regression
+        coefs = results["coefficients"]
+        if feature_names and len(feature_names) == len(coefs):
+            coef_df = pd.DataFrame({"Feature": feature_names, "Coefficient": coefs})
+        else:
+            coef_df = pd.DataFrame({"Feature": range(len(coefs)), "Coefficient": coefs})
+        ax_coef = coef_df.plot(x="Feature", y="Coefficient", kind="bar", figsize=(10, 5), legend=False)
+        ax_coef.set_title(f"{title} - Coefficients")
+        ax_coef.axhline(0, color="black", linewidth=0.8)
+        ax_coef.set_ylabel("Value")
+        ax_coef.grid(True, axis="y")
+
+        # Add values on bars
+        for container in ax_coef.containers:
+            ax_coef.bar_label(container, fmt="%.2f", label_type="edge")
+
+        plt.show()
+
+    elif "feature_importances" in results:  # Random Forest
+        importances = results["feature_importances"]
+        if feature_names and len(feature_names) == len(importances):
+            imp_df = pd.DataFrame({"Feature": feature_names, "Importance": importances})
+        else:
+            imp_df = pd.DataFrame({"Feature": range(len(importances)), "Importance": importances})
+        ax_imp = imp_df.plot(x="Feature", y="Importance", kind="bar", figsize=(10, 5), legend=False)
+        ax_imp.set_title(f"{title} - Feature Importances")
+        ax_imp.set_ylabel("Importance")
+        ax_imp.grid(True, axis="y")
+
+        for container in ax_imp.containers:
+            ax_imp.bar_label(container, fmt="%.2f", label_type="edge")
+
+        plt.show()
+
+    # ======================
+    # 4. Print intercept if available
+    # ======================
+    if "intercept" in results:
+        print(f"Intercept: {results['intercept']:.4f}")

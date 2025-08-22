@@ -1,6 +1,6 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from .nodes import (train_nn_torch_spark)
+from .nodes import (train_nn_torch_spark,train_linear_regression_spark, train_random_forest_spark)
 
 
 def create_pipeline(**kwargs) -> Pipeline:
@@ -29,5 +29,17 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="train_nn_torch_cluster_node",
                 tags=["spark"]
             ),
+            node(
+                func=train_linear_regression_spark,
+                inputs="employee_features_spark",   # dataset from your earlier preprocessing node
+                outputs="linear_regression_results",
+                name="train_linear_regression_node"
+            ),
+            node(
+                func=train_random_forest_spark,
+                inputs="employee_features_spark",
+                outputs="random_forest_results",
+                name="train_random_forest_node"
+            )
         ]
     )

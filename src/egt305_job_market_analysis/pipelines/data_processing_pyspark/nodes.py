@@ -5,21 +5,31 @@ from pyspark.sql import types as T
 
 logger = logging.getLogger(__name__)
 
+
 def _rename_columns(df: DataFrame, mapping: dict) -> DataFrame:
+    """Rename columns based on a mapping dictionary."""
     for old, new in mapping.items():
         if old in df.columns and old != new:
             df = df.withColumnRenamed(old, new)
     return df
 
+
 def _extract_digits_long(colname: str):
-    """Extract numeric part of an ID string (JOBxxxx, COMPxxxx, etc.) as LongType."""
+    """Extract numeric part of an ID string (e.g., JOBxxxx, COMPxxxx) as LongType."""
     return F.regexp_extract(F.col(colname).cast("string"), r"(\d+)", 1).cast(T.LongType())
+
 
 def clean_and_merge_employee_salary_spark(
     df_employee: DataFrame, df_salary: DataFrame
 ) -> DataFrame:
+    """
+    Clean employee & salary datasets in Spark, merge them, deduplicate,
+    and handle basic outliers. Logs major checkpoints.
+    """
 
-    # --------------------- EMPLOYEE CLEANING ---------------------
+    # -------------------------------------------------------------------------
+    # EMPLOYEE CLEANING
+    # -------------------------------------------------------------------------
     e = df_employee
     e = _rename_columns(
         e,
@@ -35,16 +45,24 @@ def clean_and_merge_employee_salary_spark(
         },
     )
 
+    # Extract digits from IDs
     if "company_id" in e.columns:
         e = e.withColumn("company_id", _extract_digits_long("company_id"))
 
     if "job_id" in e.columns:
         e = e.withColumn("job_id", _extract_digits_long("job_id"))
 
+    # Ensure numeric type for years_experience and distance_from_cbd
     for c in ["years_experience", "distance_from_cbd"]:
         if c in e.columns:
             e = e.withColumn(c, F.col(c).cast(T.DoubleType()))
 
+    # Drop rows where years_experience or distance_from_cbd is null
+    for c in ["years_experience", "distance_from_cbd"]:
+        if c in e.columns:
+            e = e.filter(F.col(c).isNotNull())
+
+    # Handle NA tokens in education/major, then fill with "NONE"
     na_tokens = ["NA", "na", "NaN", "nan", "<NA>"]
     for c in ["education", "major"]:
         if c in e.columns:
@@ -56,22 +74,23 @@ def clean_and_merge_employee_salary_spark(
     if fill_map:
         e = e.fillna(fill_map)
 
-    for c in ["job_role", "industry"]:
+    # Drop rows missing categorical or ID values
+    for c in ["job_role", "industry", "job_id", "company_id"]:
         if c in e.columns:
             e = e.filter(F.col(c).isNotNull())
 
-    for c in ["job_id", "company_id"]:
-        if c in e.columns:
-            e = e.filter(F.col(c).isNotNull())
-
-    # --------------------- SALARY CLEANING -----------------------
+    # -------------------------------------------------------------------------
+    # SALARY CLEANING
+    # -------------------------------------------------------------------------
     s = df_salary
     s = _rename_columns(s, {"jobId": "job_id", "salaryInThousands": "salary_k"})
     s = s.withColumn("job_id", _extract_digits_long("job_id"))
     s = s.withColumn("salary_k", F.col("salary_k").cast(T.LongType()))
     s = s.dropna(subset=["job_id", "salary_k"])
 
-    # --------------------- MERGE & DEDUP -------------------------
+    # -------------------------------------------------------------------------
+    # MERGE & DEDUPLICATION
+    # -------------------------------------------------------------------------
     m = e.join(s, on="job_id", how="inner")
     logger.info("After merge: %d rows", m.count())
 
@@ -82,39 +101,47 @@ def clean_and_merge_employee_salary_spark(
         m = m.dropDuplicates().dropDuplicates(["job_id"])
     logger.info("After deduplication: %d rows", m.count())
 
-    # --------------------- OUTLIERS -------------------------------
+    # -------------------------------------------------------------------------
+    # OUTLIERS & FINAL CLEANING
+    # -------------------------------------------------------------------------
+    # Remove PRESIDENT role
     if "job_role" in m.columns:
         m = m.filter(F.col("job_role") != "PRESIDENT")
 
+    # Cap distance_from_cbd at 100
     if "distance_from_cbd" in m.columns:
         m = m.filter(F.col("distance_from_cbd") <= 100)
 
+    # Remove extreme or invalid salaries
     if "salary_k" in m.columns:
         m = m.filter((F.col("salary_k") != 0) & (F.col("salary_k") != 10_000_000))
 
+    # Handle janitor salary outliers via IQR
     if set(["job_role", "salary_k"]).issubset(m.columns):
         janitors = m.filter(F.col("job_role") == "JANITOR")
-        if janitors.take(1):
+        if janitors.take(1):  # only if janitors exist
             q1, q3 = janitors.approxQuantile("salary_k", [0.25, 0.75], 0.01)
             iqr = q3 - q1
             lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-            janitors_clean = janitors.filter((F.col("salary_k") >= lower) & (F.col("salary_k") <= upper))
+            janitors_clean = janitors.filter(
+                (F.col("salary_k") >= lower) & (F.col("salary_k") <= upper)
+            )
             non_janitors = m.filter(F.col("job_role") != "JANITOR")
             m = janitors_clean.unionByName(non_janitors)
 
     logger.info("Final dataset ready for saving: %d rows", m.count())
     return m
 
-from pyspark.sql import DataFrame
-from pyspark.sql import functions as F
-from pyspark.sql.types import IntegerType
 
 def pre_split_feature_engineering_spark(df: DataFrame) -> DataFrame:
     """
-    Create pre-split features that do not use target (salary).
+    Create pre-split engineered features (numeric encodings and handcrafted scores)
+    without using the target (salary).
     """
 
-    # --- Dictionaries as Spark maps ---
+    # -------------------------------------------------------------------------
+    # ENCODING DICTIONARIES
+    # -------------------------------------------------------------------------
     edu_map = {
         "NONE": 0,
         "HIGH_SCHOOL": 1,
@@ -152,17 +179,19 @@ def pre_split_feature_engineering_spark(df: DataFrame) -> DataFrame:
         "ENGINEERING": 8
     }
 
-    # Helper: dictionary -> Spark map expression
+    # Helper: convert dict -> Spark map expression
     def dict_to_map(d: dict):
         return F.create_map([F.lit(x) for kv in d.items() for x in kv])
 
-    # Apply mappings
+    # -------------------------------------------------------------------------
+    # APPLY ENCODINGS
+    # -------------------------------------------------------------------------
     df = df.withColumn("education_level", dict_to_map(edu_map)[F.col("education")].cast("int"))
     df = df.withColumn("job_role_rank", dict_to_map(role_rank)[F.col("job_role")].cast("int"))
     df = df.withColumn("industry_score", dict_to_map(industry_score)[F.col("industry")].cast("int"))
     df = df.withColumn("major_score", dict_to_map(major_score)[F.col("major")].cast("int"))
 
-    # Handcrafted score
+    # Handcrafted composite score
     df = df.withColumn(
         "handcrafted_score",
         (F.col("industry_score") +
@@ -171,19 +200,31 @@ def pre_split_feature_engineering_spark(df: DataFrame) -> DataFrame:
          F.col("education_level")).cast("int")
     )
 
-    # Drop unused columns
+    # Drop raw categorical columns
     df = df.drop("education", "job_role", "industry", "major", "company_id")
-    # --- Missing data logger ---
-    cols_to_check = ["education_level", "job_role_rank", "industry_score",
-                     "major_score", "handcrafted_score"]
 
-    null_counts = df.select([F.count(F.when(F.col(c).isNull(), c)).alias(c) for c in cols_to_check]).collect()[0].asDict()
+    # -------------------------------------------------------------------------
+    # NULL CHECK LOGGING
+    # -------------------------------------------------------------------------
+    cols_to_check = [
+        "years_experience",
+        "distance_from_cbd",
+        "salary_k",
+        "education_level",
+        "job_role_rank",
+        "industry_score",
+        "major_score",
+        "handcrafted_score"
+    ]
+
+    null_counts = df.select(
+        [F.count(F.when(F.col(c).isNull(), c)).alias(c) for c in cols_to_check]
+    ).collect()[0].asDict()
     total_nulls = sum(null_counts.values())
 
     if total_nulls > 0:
-        logger.warning("Null values detected in engineered features: %s", null_counts)
+        logger.warning("Null values detected in final features: %s", null_counts)
     else:
-        logger.info("No missing values in engineered features.")
+        logger.info("No missing values in final features.")
+
     return df
-
-

@@ -244,18 +244,11 @@ nn_metadata_spark_finetuned:
 # ===============================
 # MLlib Linear Regression outputs
 # ===============================
-lr_mllib_metrics:
+linear_regression_results:
   type: json.JSONDataset
-  filepath: data/08_reporting/lr_mllib_metrics.json
-
-lr_mllib_predictions:
-  type: pandas.ParquetDataset
-  filepath: data/07_model_output/lr_mllib_predictions.parquet
-
-lr_mllib_history:
+  filepath: data/08_reporting/linear_regression_results.json
+  
+random_forest_results:
   type: json.JSONDataset
-  filepath: data/08_reporting/lr_mllib_history.json
+  filepath: data/08_reporting/random_forest_results.json
 
-lr_mllib_metadata:
-  type: json.JSONDataset
-  filepath: data/08_reporting/lr_mllib_metadata.json

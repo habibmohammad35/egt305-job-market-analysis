@@ -11,10 +11,10 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=finetune_nn_torch_nonspark_grid,
             inputs=[
-                "employee_dataset_features",        # your pandas dataset
-                "nn_model",                 # base model state dict
-                "nn_metadata",              # base metadata
-                "params:modeling_nonspark.param_grid",  # param grid dict
+                "employee_dataset_features",      
+                "nn_model",                 
+                "nn_metadata",            
+                "params:modeling_nonspark.param_grid",  
             ],
             outputs=[
                 "nn_model_nonspark_finetuned",
@@ -31,9 +31,9 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=finetune_nn_torch_spark_grid,
             inputs=[
-                "employee_features_spark",           # your Spark dataset
-                "nn_model_spark",                    # base model state dict
-                "nn_metadata_spark",                 # base metadata
+                "employee_features_spark",       
+                "nn_model_spark",                  
+                "nn_metadata_spark",                
                 "params:modeling_pyspark.param_grid",
             ],
             outputs=[
