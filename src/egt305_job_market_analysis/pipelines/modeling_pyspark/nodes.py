@@ -24,10 +24,12 @@ from pyspark.sql import functions as F, types as T
 from pyspark.ml import Pipeline
 from pyspark.ml.feature import StringIndexer
 from pyspark.ml import Pipeline
-from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.feature import VectorAssembler, StandardScaler
 from pyspark.ml.regression import LinearRegression, RandomForestRegressor
 from pyspark.ml.evaluation import RegressionEvaluator
+import logging
 
+logger = logging.getLogger(__name__)
 
 # Use global device if already defined; otherwise pick CUDA if available.
 device = globals().get("device", torch.device("cuda" if torch.cuda.is_available() else "cpu"))
@@ -402,3 +404,164 @@ def train_nn_torch_spark(
     }
 
     return model.state_dict(), metrics, predictions, history, metadata
+
+def train_linear_regression_spark(df):
+    """
+    Train and evaluate a Spark MLlib Linear Regression model on salary prediction.
+    
+    Args:
+        df (pyspark.sql.DataFrame): Preprocessed dataset with numeric features:
+            ['years_experience', 'distance_from_cbd',
+             'education_level', 'job_role_rank',
+             'industry_score', 'major_score', 'handcrafted_score',
+             'salary_k']
+             
+    Returns:
+        dict: Dictionary with model coefficients, intercept, and evaluation metrics.
+    """
+    # ======================
+    # 1. Assemble Features
+    # ======================
+    feature_cols = [
+        "years_experience", "distance_from_cbd",
+        "education_level", "job_role_rank",
+        "industry_score", "major_score", "handcrafted_score"
+    ]
+
+    assembler = VectorAssembler(
+        inputCols=feature_cols,
+        outputCol="features_unscaled"
+    )
+
+    df_assembled = assembler.transform(df).select("features_unscaled", "salary_k")
+
+    # Optional: scale features
+    scaler = StandardScaler(
+        inputCol="features_unscaled", 
+        outputCol="features", 
+        withStd=True, withMean=True
+    )
+    scaler_model = scaler.fit(df_assembled)
+    df_scaled = scaler_model.transform(df_assembled).select("features", F.col("salary_k").alias("label"))
+
+    # ======================
+    # 2. Split Data
+    # ======================
+    train_df, val_df, test_df = df_scaled.randomSplit([0.7, 0.15, 0.15], seed=42)
+    logger.info("Train: %d, Val: %d, Test: %d", train_df.count(), val_df.count(), test_df.count())
+
+    # ======================
+    # 3. Train Model
+    # ======================
+    lr = LinearRegression(featuresCol="features", labelCol="label")
+    lr_model = lr.fit(train_df)
+
+    # ======================
+    # 4. Evaluate on Validation + Test
+    # ======================
+    evaluator_rmse = RegressionEvaluator(labelCol="label", predictionCol="prediction", metricName="rmse")
+    evaluator_mae  = RegressionEvaluator(labelCol="label", predictionCol="prediction", metricName="mae")
+    evaluator_r2   = RegressionEvaluator(labelCol="label", predictionCol="prediction", metricName="r2")
+
+    def evaluate(split_name, df_split):
+        preds = lr_model.transform(df_split)
+        return {
+            f"{split_name}_rmse": evaluator_rmse.evaluate(preds),
+            f"{split_name}_mae": evaluator_mae.evaluate(preds),
+            f"{split_name}_r2": evaluator_r2.evaluate(preds),
+        }
+
+    metrics = {}
+    metrics.update(evaluate("val", val_df))
+    metrics.update(evaluate("test", test_df))
+
+    # ======================
+    # 5. Collect Results
+    # ======================
+    results = {
+        "intercept": lr_model.intercept,
+        "coefficients": lr_model.coefficients.toArray().tolist(),
+    }
+    results.update(metrics)
+
+    logger.info("Model Results: %s", results)
+
+    return results
+
+def train_random_forest_spark(df):
+    """
+    Train and evaluate a Spark MLlib Random Forest Regressor on salary prediction.
+    
+    Args:
+        df (pyspark.sql.DataFrame): Preprocessed dataset with numeric features:
+            ['years_experience', 'distance_from_cbd',
+             'education_level', 'job_role_rank',
+             'industry_score', 'major_score', 'handcrafted_score',
+             'salary_k']
+             
+    Returns:
+        dict: Dictionary with feature importances and evaluation metrics.
+    """
+    # ======================
+    # 1. Assemble Features
+    # ======================
+    feature_cols = [
+        "years_experience", "distance_from_cbd",
+        "education_level", "job_role_rank",
+        "industry_score", "major_score", "handcrafted_score"
+    ]
+
+    assembler = VectorAssembler(
+        inputCols=feature_cols,
+        outputCol="features"
+    )
+
+    df_assembled = assembler.transform(df).select("features", F.col("salary_k").alias("label"))
+
+    # ======================
+    # 2. Split Data
+    # ======================
+    train_df, val_df, test_df = df_assembled.randomSplit([0.7, 0.15, 0.15], seed=42)
+    logger.info("Train: %d, Val: %d, Test: %d", train_df.count(), val_df.count(), test_df.count())
+
+    # ======================
+    # 3. Train Model
+    # ======================
+    rf = RandomForestRegressor(
+        featuresCol="features", 
+        labelCol="label", 
+        numTrees=100,        
+        maxDepth=10,         
+        seed=42
+    )
+    rf_model = rf.fit(train_df)
+
+    # ======================
+    # 4. Evaluate on Validation + Test
+    # ======================
+    evaluator_rmse = RegressionEvaluator(labelCol="label", predictionCol="prediction", metricName="rmse")
+    evaluator_mae  = RegressionEvaluator(labelCol="label", predictionCol="prediction", metricName="mae")
+    evaluator_r2   = RegressionEvaluator(labelCol="label", predictionCol="prediction", metricName="r2")
+
+    def evaluate(split_name, df_split):
+        preds = rf_model.transform(df_split)
+        return {
+            f"{split_name}_rmse": evaluator_rmse.evaluate(preds),
+            f"{split_name}_mae": evaluator_mae.evaluate(preds),
+            f"{split_name}_r2": evaluator_r2.evaluate(preds),
+        }
+
+    metrics = {}
+    metrics.update(evaluate("val", val_df))
+    metrics.update(evaluate("test", test_df))
+
+    # ======================
+    # 5. Collect Results
+    # ======================
+    results = {
+        "feature_importances": rf_model.featureImportances.toArray().tolist(),
+    }
+    results.update(metrics)
+
+    logger.info("Random Forest Results: %s", results)
+    return results

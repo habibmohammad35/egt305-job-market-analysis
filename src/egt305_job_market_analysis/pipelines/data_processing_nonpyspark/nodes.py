@@ -1,12 +1,11 @@
 import logging
 import pandas as pd
-from sklearn.decomposition import PCA
 
 logger = logging.getLogger(__name__)
 
 
 def _as_nullable_int(s: pd.Series) -> pd.Series:
-    """Coerce to pandas nullable Int64, handling bad parses as NA."""
+    """Convert to pandas nullable Int64, coercing bad values to <NA>."""
     return pd.to_numeric(s, errors="coerce").astype("Int64")
 
 
@@ -14,13 +13,16 @@ def clean_and_merge_employee_salary(
     df_employee: pd.DataFrame, df_salary: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Clean employee & salary datasets, merge, deduplicate, and handle outliers.
-    Logs only major checkpoints (merge + deduplication).
+    Clean employee & salary datasets, merge them, remove duplicates, 
+    and handle obvious outliers. Logs major checkpoints.
     """
 
-    # --- EMPLOYEE CLEANING ----------------------------------------------------
+    # -------------------------------------------------------------------------
+    # EMPLOYEE CLEANING
+    # -------------------------------------------------------------------------
     e = df_employee.copy()
 
+    # Standardize column names
     e = e.rename(
         columns={
             "jobId": "job_id",
@@ -34,6 +36,7 @@ def clean_and_merge_employee_salary(
         }
     )
 
+    # Convert company_id to integer (extract digits from COMPxxxx format)
     if "company_id" in e.columns:
         e["company_id"] = (
             e["company_id"]
@@ -43,6 +46,7 @@ def clean_and_merge_employee_salary(
             .pipe(_as_nullable_int)
         )
 
+    # Convert job_id to integer (extract digits from JOBxxxx format)
     if "job_id" in e.columns:
         mask_valid = (
             e["job_id"].astype("string").str.fullmatch(r"JOB\d+") | e["job_id"].isna()
@@ -59,10 +63,12 @@ def clean_and_merge_employee_salary(
             .pipe(_as_nullable_int)
         )
 
+    # Ensure numeric types for years_experience and distance_from_cbd
     for col in ["years_experience", "distance_from_cbd"]:
         if col in e.columns:
             e[col] = pd.to_numeric(e[col], errors="coerce")
 
+    # Handle NA tokens in education and major, then fill with NONE
     for col in ["education", "major"]:
         if col in e.columns:
             e[col] = (
@@ -71,25 +77,32 @@ def clean_and_merge_employee_salary(
                 .fillna("NONE")
             )
 
+    # Drop rows missing critical categorical columns
     to_check = [c for c in ["job_role", "industry"] if c in e.columns]
     if to_check:
         e = e.dropna(subset=to_check)
 
+    # Drop rows with null values in integer-like columns
     int_like = e.select_dtypes(include=["int64", "Int64"]).columns
     if len(int_like):
         e = e.dropna(subset=int_like)
 
+    # Convert company_id to category if valid
     if "company_id" in e.columns and str(e["company_id"].dtype) in ("Int64", "int64"):
         e["company_id"] = e["company_id"].astype("category")
 
+    # Convert all object/string cols to categorical
     for col in e.select_dtypes(include=["object", "string"]).columns:
         e[col] = e[col].astype("category")
 
+    # Convert nullable Int64 columns to plain int64
     int64_nullable_cols = e.select_dtypes(include="Int64").columns
     for col in int64_nullable_cols:
         e[col] = e[col].astype("int64")
 
-    # --- SALARY CLEANING ------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # SALARY CLEANING
+    # -------------------------------------------------------------------------
     s = df_salary.copy()
     s = s.rename(columns={"jobId": "job_id", "salaryInThousands": "salary_k"})
 
@@ -98,11 +111,14 @@ def clean_and_merge_employee_salary(
     )
     s["salary_k"] = pd.to_numeric(s["salary_k"], errors="coerce")
 
+    # Drop rows with missing job_id or salary
     s = s.dropna(subset=["job_id", "salary_k"])
     s["job_id"] = s["job_id"].astype("int64")
     s["salary_k"] = s["salary_k"].astype("int64")
 
-    # --- MERGE & DEDUP --------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # MERGE & DEDUPLICATION
+    # -------------------------------------------------------------------------
     rows_emp_before, rows_sal_before = len(e), len(s)
     m = e.merge(s, on="job_id", how="inner")
     logger.info(
@@ -112,25 +128,32 @@ def clean_and_merge_employee_salary(
         len(m),
     )
 
+    # Handle duplicates (full + job_id based)
     dup_full = m.duplicated().sum()
     dup_id = m["job_id"].duplicated().sum()
     if dup_full or dup_id:
         logger.warning(
-            "Duplicates found: full=%d, by job_id=%d. Dropping duplicates.", dup_full, dup_id
+            "Duplicates found: full=%d, by job_id=%d. Dropping duplicates.",
+            dup_full, dup_id
         )
         m = m.drop_duplicates()
         m = m.drop_duplicates(subset=["job_id"], keep="first")
     logger.info("After deduplication: %d rows", len(m))
 
-    # --- OUTLIERS & FINAL TIDY ------------------------------------------------
+    # -------------------------------------------------------------------------
+    # OUTLIERS & FINAL CLEANING
+    # -------------------------------------------------------------------------
+    # Remove PRESIDENT role as outlier
     if "job_role" in m.columns:
         m = m[m["job_role"] != "PRESIDENT"]
         if pd.api.types.is_categorical_dtype(m["job_role"]):
             m["job_role"] = m["job_role"].cat.remove_unused_categories()
 
+    # Clean unused categories in industry
     if "industry" in m.columns and pd.api.types.is_categorical_dtype(m["industry"]):
         m["industry"] = m["industry"].cat.remove_unused_categories()
 
+    # Filter invalid values
     if "distance_from_cbd" in m.columns:
         m = m[m["distance_from_cbd"] <= 100]
 
@@ -138,6 +161,7 @@ def clean_and_merge_employee_salary(
         m = m[m["salary_k"] != 0]
         m = m[m["salary_k"] != 10_000_000]
 
+    # Handle janitor outliers via IQR
     if "job_role" in m.columns:
         jan_mask = m["job_role"] == "JANITOR"
         janitors = m.loc[jan_mask].copy()
@@ -156,11 +180,13 @@ def clean_and_merge_employee_salary(
     logger.info("Final dataset ready for saving: %d rows", len(m))
     return m
 
+
 def pre_split_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Create pre-split features that do not use target (salary).
+    Create pre-split engineered features (numeric encodings, handcrafted scores,
+    and interaction features) without using the target (salary).
     """
-    # Education mapping
+    # Encode education
     edu_map = {
         "NONE": 0,
         "HIGH_SCHOOL": 1,
@@ -170,7 +196,7 @@ def pre_split_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     }
     df["education_level"] = df["education"].map(edu_map).astype("int8")
 
-    # Ordinal job role rank
+    # Encode job role hierarchy
     role_rank = {
         "CEO": 6,
         "CTO": 5, "CFO": 5,
@@ -182,6 +208,7 @@ def pre_split_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     }
     df["job_role_rank"] = df["job_role"].map(role_rank).astype("int8")
 
+    # Encode industry scores
     industry_score = {
         "EDUCATION": 1,
         "SERVICE": 1,
@@ -193,6 +220,7 @@ def pre_split_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     }
     df["industry_score"] = df["industry"].map(industry_score).astype("int8")
 
+    # Encode major scores
     major_score = {
         "NONE": 0,
         "LITERATURE": 1,
@@ -206,16 +234,14 @@ def pre_split_feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     }
     df["major_score"] = df["major"].map(major_score).astype("int8")
 
-    # --- Handcrafted score (simple sum of meaningful features) ---
+    # Handcrafted score (sum of meaningful encodings)
     handcrafted_features = ["industry_score", "major_score", "job_role_rank", "education_level"]
     df["handcrafted_score"] = df[handcrafted_features].sum(axis=1)
 
-    # Cross-relations
-    df["edu_major"] = df["education"].astype(str) + "_" + df["major"].astype(str)
-    df["industry_role"] = df["industry"].astype(str) + "_" + df["job_role"].astype(str)
-    df["edu_major"] = df["edu_major"].astype("category")
-    df["industry_role"] = df["industry_role"].astype("category")
+    # Create simple interaction features
+    df["edu_major"] = (df["education"].astype(str) + "_" + df["major"].astype(str)).astype("category")
+    df["industry_role"] = (df["industry"].astype(str) + "_" + df["job_role"].astype(str)).astype("category")
 
-    df = df.drop(columns=["education", "job_role", "industry" ,"major" ,"company_id"])
+    # Drop raw categorical columns that are now encoded
+    df = df.drop(columns=["education", "job_role", "industry", "major", "company_id"])
     return df
-

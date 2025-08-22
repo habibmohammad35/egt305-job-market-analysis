@@ -3,7 +3,7 @@
 # ======================================================
 import logging
 import warnings
-from typing import Optional, Tuple, Generator
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -20,29 +20,28 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
-from sklearn.model_selection import KFold
 
 
 # ======================================================
 # Setup
 # ======================================================
-# Make CUDA multiprocessing safe for environments where this script may be imported.
+# Make CUDA multiprocessing safe when imported in other contexts
 try:
     mp.set_start_method("spawn", force=True)
 except RuntimeError:
     pass
 
-# Silence specific deprecation noise from older amp usage (if any upstream libs trigger it).
+# Silence specific deprecation warnings (e.g., old torch.amp messages)
 warnings.filterwarnings("ignore", message=r".*torch\.cuda\.amp.*is deprecated.*")
 
 logger = logging.getLogger(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"[Torch] Using device: {device}")
 
+
 # ======================================================
 # Split (numeric features + integer-encoded categoricals for NN)
 # ======================================================
-
 def split_model_data_three_way(
     data: pd.DataFrame,
     cat_cols: tuple[str, str] = ("edu_major", "industry_role"),
@@ -102,7 +101,6 @@ def split_model_data_three_way(
 # ======================================================
 # Model
 # ======================================================
-
 class EmbeddingNNRegressor(nn.Module):
     """
     Simple MLP regressor that concatenates numeric features with learned embeddings
@@ -134,9 +132,8 @@ class EmbeddingNNRegressor(nn.Module):
 
 
 # ======================================================
-# Training
+# Training: Torch NN
 # ======================================================
-
 def train_nn_torch(
     data: pd.DataFrame,
     cat_cols: tuple[str, str] = ("edu_major", "industry_role"),
@@ -154,14 +151,11 @@ def train_nn_torch(
 
     Returns:
       (
-        model_state_dict,     # state dict of trained model (best by val loss)
-        metrics,              # {"r2", "mae", "rmse"} computed on test set
+        model_state_dict,     # trained model weights (best by val loss)
+        metrics,              # {"r2", "mae", "rmse"} on test set
         predictions_df,       # DataFrame: ["job_id", "y_true", "y_pred"] (test set only, original scale)
         history,              # {"train_loss": [...], "val_loss": [...]}
-        metadata,             # {"num_cols", "cat_cols", "cat_cardinalities"}
-        X_train, X_valid, X_test,
-        y_train, y_valid, y_test,
-        job_train, job_valid, job_test
+        metadata              # {"num_cols", "cat_cols", "cat_cardinalities"}
       )
     """
     # 1) Three-way split
@@ -220,7 +214,7 @@ def train_nn_torch(
     history = {"train_loss": [], "val_loss": []}
 
     for epoch in range(epochs):
-        # Train
+        # --- Train ---
         model.train()
         running = 0.0
         for xb_num, xb_cat, yb in train_loader:
@@ -233,7 +227,7 @@ def train_nn_torch(
             running += loss.item() * xb_num.size(0)
         train_loss = running / len(train_loader.dataset)
 
-        # Validate
+        # --- Validate ---
         model.eval()
         running = 0.0
         with torch.no_grad():
@@ -245,7 +239,7 @@ def train_nn_torch(
         val_loss = running / len(valid_loader.dataset)
         scheduler.step(val_loss)
 
-        # Record losses
+        # Record
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
 
@@ -285,17 +279,11 @@ def train_nn_torch(
         "cat_cardinalities": cat_cardinalities,
     }
 
-    # Return model artifacts AND all split sets (train/valid/test)
-    return (
-        model.state_dict(),   # trained model weights
-        metrics,              # test set metrics
-        predictions,          # DataFrame with job_id, y_true, y_pred (test set)
-        history,              # training/validation loss curves
-        metadata              # info about features & embeddings
-    )   
+    return model.state_dict(), metrics, predictions, history, metadata
+
 
 # ======================================================
-# Split (OHE for sklearn models, with train/valid/test)
+# Split (OHE for sklearn models)
 # ======================================================
 def split_ohe_three_way(
     data: pd.DataFrame,
@@ -310,7 +298,7 @@ def split_ohe_three_way(
            pd.Series, pd.Series, pd.Series,
            list[str]]:
     """
-    Split into train/valid/test and apply One-Hot Encoding on categorical columns.
+    Split into train/valid/test and apply One-Hot Encoding to categorical columns.
 
     Returns:
       X_train_enc, X_valid_enc, X_test_enc,
@@ -336,11 +324,11 @@ def split_ohe_three_way(
         test_size=valid_size, random_state=random_state
     )
 
-    # Normalize cat_cols input
+    # Identify categorical/numeric
     cat_list = [c for c in list(cat_cols) if c in X_train.columns]
     num_cols = [c for c in X_train.columns if c not in cat_list]
 
-    # Fit encoder on combined sets (train+valid+test) to ensure consistent columns
+    # Fit encoder on combined sets to ensure consistent columns
     if len(cat_list) > 0:
         enc = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
         enc.fit(pd.concat([X_train[cat_list], X_valid[cat_list], X_test[cat_list]], axis=0))
@@ -354,7 +342,7 @@ def split_ohe_three_way(
         X_test_cat = np.empty((X_test.shape[0], 0), dtype=float)
         ohe_names = []
 
-    # Numeric parts
+    # Numeric features
     X_train_num = X_train[num_cols].to_numpy()
     X_valid_num = X_valid[num_cols].to_numpy()
     X_test_num = X_test[num_cols].to_numpy()
@@ -379,7 +367,7 @@ def split_ohe_three_way(
 
 
 # ======================================================
-# Standardized training: Linear Regression (with OHE)
+# Training: Linear Regression (OHE)
 # ======================================================
 def train_linear_regression_std(
     data: pd.DataFrame,
@@ -387,9 +375,7 @@ def train_linear_regression_std(
     test_size: float = 0.2,
     valid_size: float = 0.2,
     random_state: int = 42,
-) -> tuple[
-    LinearRegression, dict, dict, dict, dict
-]:
+) -> tuple[LinearRegression, dict, dict, dict, dict]:
     """
     Train a LinearRegression model using OHE features with train/valid/test split.
 
@@ -397,8 +383,8 @@ def train_linear_regression_std(
       (
         fitted_model,
         metrics,        # {"r2", "mae", "rmse"} on test set
-        predictions,    # {"valid": DataFrame, "test": DataFrame}
-        history,        # empty dict to standardize signature
+        predictions,    # DataFrame of valid+test predictions
+        history,        # empty dict (for signature consistency)
         metadata        # feature metadata
       )
     """
@@ -420,21 +406,11 @@ def train_linear_regression_std(
 
     # Validation predictions
     y_valid_pred = model.predict(X_valid_enc)
-    valid_df = pd.DataFrame({
-        "job_id": job_valid,
-        "y_true": y_valid,
-        "y_pred": y_valid_pred
-    })
-    valid_df["split"] = "valid"
+    valid_df = pd.DataFrame({"job_id": job_valid, "y_true": y_valid, "y_pred": y_valid_pred, "split": "valid"})
 
     # Test predictions
     y_test_pred = model.predict(X_test_enc)
-    test_df = pd.DataFrame({
-        "job_id": job_test,
-        "y_true": y_test,
-        "y_pred": y_test_pred
-    })
-    test_df["split"] = "test"
+    test_df = pd.DataFrame({"job_id": job_test, "y_true": y_test, "y_pred": y_test_pred, "split": "test"})
 
     # Combine into one DataFrame
     predictions = pd.concat([valid_df, test_df], ignore_index=True)
@@ -459,7 +435,7 @@ def train_linear_regression_std(
 
 
 # ======================================================
-# Standardized training: Random Forest (with OHE)
+# Training: Random Forest (OHE)
 # ======================================================
 def train_random_forest_std(
     data: pd.DataFrame,
@@ -468,9 +444,7 @@ def train_random_forest_std(
     valid_size: float = 0.2,
     random_state: int = 42,
     n_estimators: int = 100,
-) -> tuple[
-    RandomForestRegressor, dict, dict, dict, dict
-]:
+) -> tuple[RandomForestRegressor, dict, dict, dict, dict]:
     """
     Train a RandomForestRegressor using OHE features with train/valid/test split.
 
@@ -478,8 +452,8 @@ def train_random_forest_std(
       (
         fitted_model,
         metrics,        # {"r2", "mae", "rmse"} on test set
-        predictions,    # {"valid": DataFrame, "test": DataFrame}
-        history,        # empty dict to standardize signature
+        predictions,    # DataFrame of valid+test predictions
+        history,        # empty dict (for signature consistency)
         metadata        # feature metadata
       )
     """
@@ -506,24 +480,15 @@ def train_random_forest_std(
 
     # Validation predictions
     y_valid_pred = model.predict(X_valid_enc)
-    valid_df = pd.DataFrame({
-        "job_id": job_valid,
-        "y_true": y_valid,
-        "y_pred": y_valid_pred
-    })
-    valid_df["split"] = "valid"
+    valid_df = pd.DataFrame({"job_id": job_valid, "y_true": y_valid, "y_pred": y_valid_pred, "split": "valid"})
 
     # Test predictions
     y_test_pred = model.predict(X_test_enc)
-    test_df = pd.DataFrame({
-        "job_id": job_test,
-        "y_true": y_test,
-        "y_pred": y_test_pred
-    })
-    test_df["split"] = "test"
+    test_df = pd.DataFrame({"job_id": job_test, "y_true": y_test, "y_pred": y_test_pred, "split": "test"})
 
     # Combine into one DataFrame
     predictions = pd.concat([valid_df, test_df], ignore_index=True)
+
     metrics = {
         "r2": float(r2_score(y_test, y_test_pred)),
         "mae": float(mean_absolute_error(y_test, y_test_pred)),
